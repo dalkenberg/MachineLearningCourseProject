@@ -1,0 +1,178 @@
+---
+title: "Machine Learning Final Course Project"
+date: "February 5, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Project Details
+
+From the course description:
+
+###Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+###Data
+The training data for this project are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+###Goal
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+## Load Packages
+
+For this analysis, we will need the caret and rpart packages.
+```{r}
+library(caret)
+library(rpart)
+library(randomForest)
+```
+
+
+## Set Seed
+
+Let's set the seed for reproducibility:
+```{r}
+set.seed(14225)
+```
+
+
+## Load data sets
+
+We have two data sets, one for training and one for final testing.
+
+```{r}
+traindata <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+testdata <- read.csv("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+```
+
+## Data exploration and cleaning
+
+These columns do not appear to be valuable in the analysis:
+1: X  (a row identity field)
+2: user_name
+3: raw_timestamp_part_1
+4: raw_timestamp_part_2
+5: cvtd_timestamp
+
+Let's remove them:
+```{r}
+traindata <- traindata[, -(1:5)]
+testdata <- testdata[, -(1:5)]
+```
+
+Columns with near zero variance and columns with 90% or more NA values are not useful.
+Let's remove them:
+```{r}
+# remove columns with 90% or more NA values
+MostNA <- function(df){
+  as.vector(which(colSums(is.na(df)) >= 0.90 * nrow(df)))
+}
+
+traindata <- traindata[,-MostNA(traindata)]
+testdata <- testdata[,-MostNA(testdata)]
+
+# remove near-zero-variance data
+traindata <- traindata[,-nearZeroVar(traindata)]
+testdata <- testdata[,-nearZeroVar(testdata)]
+
+```
+
+
+## Data analysis
+
+First, let's create two different models, one using Decision Trees and another using Random Forests
+
+We will split our cleaned training data into two parts - one for training and one for testing.
+```{r}
+trainPartition  <- createDataPartition(traindata$classe, p=0.7, list=FALSE)
+
+trainFrame <- traindata[trainPartition, ]
+testFrame  <- traindata[-trainPartition, ]
+
+```
+
+Next, let's build the two models and run the predictions against the test data to see how they do:
+```{r}
+modrpart <- rpart(classe ~ ., data=trainFrame, method="class")
+predrpart <- predict(modrpart, newdata=testFrame, type = "class")
+confusionMatrix(predrpart, testFrame$classe)
+
+modrf <- randomForest(classe ~. , data=trainFrame)
+predrf <- predict(modrf, newdata=testFrame, type = "class")
+confusionMatrix(predrf, testFrame$classe)
+
+```
+
+
+Clearly, the random forest model produces much better results.
+
+Next, let's create three sets of training and test data so we can do some cross validation and find an average out-of-sample error.
+
+First, we create three sets of data:
+```{r}
+trainPartition  <- createDataPartition(traindata$classe, p=0.7, list=FALSE, times=3)
+
+set1 <- trainPartition[,1]
+set2 <- trainPartition[,2]
+set3 <- trainPartition[,3]
+
+trainSub1 <- traindata[set1,]
+testSub1  <- traindata[-set1, ]
+trainSub2 <- traindata[set2,]
+testSub2 <- traindata[-set2, ]
+trainSub3 <- traindata[set3,]
+testSub3 <- traindata[-set3, ]
+
+```
+
+Next, let's create three models using the Random Forest method, one for each set of data.
+Then we can compare the results of each:
+```{r}
+modsub1 <- randomForest(classe ~. , data=trainSub1)
+predsub1 <- predict(modsub1, newdata=testSub1, type = "class")
+confusionMatrix(predsub1, testSub1$classe)
+
+modsub2 <- randomForest(classe ~. , data=trainSub2)
+predsub2 <- predict(modsub2, newdata=testSub2, type = "class")
+confusionMatrix(predsub2, testSub2$classe)
+
+modsub3 <- randomForest(classe ~. , data=trainSub3)
+predsub3 <- predict(modsub3, newdata=testSub3, type = "class")
+confusionMatrix(predsub3, testSub3$classe)
+
+```
+
+# Out of Sample Error
+
+Reviewing the accuracy of the three predictions, we can find an average out of sample error:
+
+Accuracy : 0.9969  
+Accuracy : 0.9978
+Accuracy : 0.9951
+
+Error: 0.0031
+Error: 0.0022
+Error: 0.0049
+
+Average Out of Sample Error:  0.34%
+
+
+# Predicting with the Test Data
+Finally, we run our prediciton using our random forest model against the original test set provided to us:
+```{r}
+
+PredRFFinal <- predict(modrf, newdata=testdata, type = "class")
+
+PredRFFinal
+```
+
+
